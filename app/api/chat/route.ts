@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 import { NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
 
 import { createSupabaseServerClient } from "@/utils/supabase/server";
 
@@ -589,20 +590,49 @@ async function executeStaffAccessCommand(
     return UNAUTHORIZED_ADMIN_COMMAND_MESSAGE;
   }
 
+  const supabaseAdmin = createSupabaseAdminClient();
+
   if (command.action === "invite") {
-    const { error } = await supabase
-      .from("allowed_invites")
-      .insert([{ email: command.email, assigned_role: "staff" }]);
+    const { error } = await supabaseAdmin.auth.admin.inviteUserByEmail(
+      command.email,
+      {
+        redirectTo: `${
+          process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"
+        }/auth/set-password`,
+        data: { role: "staff" },
+      }
+    );
 
     if (error) {
-      console.error("Failed to append OUGM staff invite.", {
+      console.error("Failed to generate Supabase staff invitation.", {
         email: command.email,
         error: error.message || error,
       });
-      throw new Error(`Failed to invite staff email: ${error.message}`);
+
+      return `Supabase invitation failed for ${command.email}: ${error.message}`;
     }
 
-    return `Successfully appended ${command.email} to the authorized staff whitelist registry.`;
+    return `Invitation successfully generated. Supabase has dispatched a secure authentication token link to ${command.email}.`;
+  }
+
+  const authUserId = await resolveAuthUserIdForEmail(command.email, supabase, supabaseAdmin);
+
+  if (authUserId) {
+    const { error: authDeleteError } =
+      await supabaseAdmin.auth.admin.deleteUser(authUserId);
+
+    if (authDeleteError) {
+      console.error("Failed to delete OUGM Auth user.", {
+        email: command.email,
+        authUserId,
+        error: authDeleteError.message || authDeleteError,
+      });
+      throw new Error(`Failed to delete Auth user: ${authDeleteError.message}`);
+    }
+  } else {
+    console.warn("No Supabase Auth user id found for OUGM staff removal.", {
+      email: command.email,
+    });
   }
 
   const { error: inviteDeleteError } = await supabase
@@ -632,6 +662,67 @@ async function executeStaffAccessCommand(
   }
 
   return `Successfully purged ${command.email} from all OUGM system environments.`;
+}
+
+function createSupabaseAdminClient() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!supabaseUrl || !serviceRoleKey) {
+    console.error("Missing Supabase Auth Admin environment variables.", {
+      hasUrl: Boolean(supabaseUrl),
+      hasServiceRoleKey: Boolean(serviceRoleKey),
+    });
+
+    throw new Error("Supabase Auth Admin environment is not configured.");
+  }
+
+  return createClient(supabaseUrl, serviceRoleKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+}
+
+async function resolveAuthUserIdForEmail(
+  email: string,
+  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
+  supabaseAdmin: ReturnType<typeof createSupabaseAdminClient>
+) {
+  const { data: profile, error: profileError } = await supabase
+    .from("profiles")
+    .select("id")
+    .eq("email", email)
+    .maybeSingle();
+
+  if (profileError) {
+    console.error("Failed to resolve OUGM profile id for Auth deletion.", {
+      email,
+      error: profileError.message || profileError,
+    });
+  }
+
+  if (typeof profile?.id === "string" && isUuid(profile.id)) {
+    return profile.id;
+  }
+
+  const { data: userPage, error: listUsersError } =
+    await supabaseAdmin.auth.admin.listUsers({
+      page: 1,
+      perPage: 1000,
+    });
+
+  if (listUsersError) {
+    console.error("Failed to list Supabase Auth users for removal fallback.", {
+      email,
+      error: listUsersError.message || listUsersError,
+    });
+    return null;
+  }
+
+  const matchingUser = userPage.users.find(
+    (user) => normalizeEmail(user.email ?? "") === email
+  );
+
+  return matchingUser?.id ?? null;
 }
 
 function parseStaffAccessSlashCommand(message: string): StaffAccessCommand | null {
@@ -832,6 +923,12 @@ function normalizeEmail(value: string) {
 
 function isValidEmail(value: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
+function isUuid(value: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    value
+  );
 }
 
 function delay(ms: number) {
