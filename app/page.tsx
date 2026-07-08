@@ -101,13 +101,13 @@ export default function Home() {
   const isAdmin = userRole === "admin";
 
   return (
-    <main className="flex min-h-screen bg-slate-950 text-slate-100">
-      <aside className="flex w-64 shrink-0 flex-col border-r border-slate-800 bg-slate-900">
-        <div className="border-b border-slate-800 px-4 py-5">
+    <main className="flex min-h-dvh flex-col bg-slate-950 text-slate-100 lg:flex-row">
+      <aside className="flex w-full shrink-0 flex-col border-b border-slate-800 bg-slate-900 lg:h-dvh lg:w-72 lg:border-b-0 lg:border-r">
+        <div className="border-b border-slate-800 px-4 py-4 sm:px-5 lg:py-5">
           <p className="text-xs font-bold tracking-[0.22em] text-emerald-300">
             OUGM
           </p>
-          <h1 className="mt-2 text-lg font-bold text-white">
+          <h1 className="mt-2 text-base font-bold text-white sm:text-lg">
             Security Team Hub
           </h1>
           <p className="mt-1 truncate text-xs text-slate-500">{user.email}</p>
@@ -122,16 +122,16 @@ export default function Home() {
           </span>
         </div>
 
-        <div className="flex-1 space-y-2 px-4 py-4">
+        <div className="grid grid-cols-1 gap-2 px-4 py-3 sm:grid-cols-2 sm:px-5 lg:block lg:flex-1 lg:space-y-2 lg:px-4 lg:py-4">
           <button
-            className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-left text-sm font-semibold text-slate-200 transition hover:bg-slate-800"
+            className="min-h-11 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-left text-sm font-semibold text-slate-200 transition hover:bg-slate-800"
             onClick={() => setActiveSecurityRoom(null)}
             type="button"
           >
             Security Dashboard
           </button>
           <Link
-            className="block w-full rounded-lg border border-emerald-400/30 bg-emerald-400/10 px-3 py-2 text-left text-sm font-semibold text-emerald-100 transition hover:border-emerald-300/60 hover:bg-emerald-400/20"
+            className="flex min-h-11 w-full items-center rounded-lg border border-emerald-400/30 bg-emerald-400/10 px-3 py-2 text-left text-sm font-semibold text-emerald-100 transition hover:border-emerald-300/60 hover:bg-emerald-400/20"
             href="/chat"
           >
             AI Chat Workspace
@@ -144,9 +144,9 @@ export default function Home() {
         />
       </aside>
 
-      <section className="relative flex min-w-0 flex-1 flex-col">
-        <div className="flex min-h-16 items-center justify-between border-b border-slate-800 bg-slate-950 px-6">
-          <div>
+      <section className="relative flex min-h-[560px] min-w-0 flex-1 flex-col lg:h-dvh">
+        <div className="flex min-h-16 flex-col gap-3 border-b border-slate-800 bg-slate-950 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+          <div className="min-w-0">
             <p className="text-sm font-bold text-slate-100">
               Security Application Layout
             </p>
@@ -154,17 +154,17 @@ export default function Home() {
               Select an OUGM channel or direct message to open realtime comms.
             </p>
           </div>
-          <span className="rounded-full border border-emerald-400/30 bg-emerald-400/10 px-3 py-1 text-xs font-semibold text-emerald-200">
+          <span className="w-fit rounded-full border border-emerald-400/30 bg-emerald-400/10 px-3 py-1 text-xs font-semibold text-emerald-200">
             {isAdmin ? "Admin: all modules unlocked" : "Authenticated"}
           </span>
         </div>
 
-        <div className="flex flex-1 items-center justify-center px-6">
-          <div className="max-w-lg rounded-lg border border-slate-800 bg-slate-900/70 p-8 text-center shadow-2xl shadow-black/20">
+        <div className="flex flex-1 items-center justify-center px-4 py-8 sm:px-6">
+          <div className="w-full max-w-lg rounded-lg border border-slate-800 bg-slate-900/70 p-5 text-center shadow-2xl shadow-black/20 sm:p-8">
             <p className="text-xs font-bold tracking-[0.2em] text-emerald-300">
               DISPATCH READY
             </p>
-            <h2 className="mt-4 text-2xl font-bold text-white">
+            <h2 className="mt-4 text-xl font-bold text-white sm:text-2xl">
               OUGM Security Team Hub
             </h2>
             <p className="mt-3 text-sm leading-6 text-slate-400">

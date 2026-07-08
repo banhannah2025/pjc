@@ -232,8 +232,8 @@ export function SecurityChatWindow({
   return (
     <div className="absolute inset-0 z-30 flex bg-slate-950 text-slate-100">
       <section className="flex min-w-0 flex-1 flex-col">
-        <header className="flex min-h-16 items-center justify-between border-b border-slate-800 bg-slate-900 px-5">
-          <div>
+        <header className="flex min-h-16 items-center justify-between gap-3 border-b border-slate-800 bg-slate-900 px-4 py-3 sm:px-5">
+          <div className="min-w-0">
             <p className="text-sm font-bold text-slate-100">
               {activeRoom.label}
             </p>
@@ -242,7 +242,7 @@ export function SecurityChatWindow({
             </p>
           </div>
           <button
-            className="rounded-lg border border-slate-700 px-3 py-2 text-xs font-semibold text-slate-300 transition hover:bg-slate-800"
+            className="min-h-10 shrink-0 rounded-lg border border-slate-700 px-3 py-2 text-xs font-semibold text-slate-300 transition hover:bg-slate-800"
             onClick={onClose}
             type="button"
           >
@@ -250,7 +250,7 @@ export function SecurityChatWindow({
           </button>
         </header>
 
-        <div className="flex-1 overflow-y-auto px-5 py-5">
+        <div className="flex-1 overflow-y-auto px-4 py-4 sm:px-5 sm:py-5">
           <div className="mx-auto flex max-w-4xl flex-col gap-4">
             {messages.length === 0 ? (
               <div className="rounded-lg border border-slate-800 bg-slate-900/70 p-6 text-center">
@@ -264,10 +264,10 @@ export function SecurityChatWindow({
             ) : (
               messages.map((message) => (
                 <article
-                  className="rounded-xl border border-slate-800 bg-slate-900/80 p-4"
+                  className="rounded-xl border border-slate-800 bg-slate-900/80 p-3 sm:p-4"
                   key={message.id}
                 >
-                  <div className="mb-2 flex items-center justify-between gap-3">
+                  <div className="mb-2 flex items-start justify-between gap-3">
                     <p className="truncate text-sm font-semibold text-slate-200">
                       {message.sender_name ?? "Security Operator"}
                     </p>
@@ -305,7 +305,7 @@ export function SecurityChatWindow({
         </div>
 
         <form
-          className="border-t border-slate-800 bg-slate-900 px-5 py-4"
+          className="border-t border-slate-800 bg-slate-900 px-4 py-3 sm:px-5 sm:py-4"
           onSubmit={handleSubmit}
         >
           {error && (
@@ -327,7 +327,7 @@ export function SecurityChatWindow({
             </div>
           )}
 
-          <div className="flex items-end gap-3">
+          <div className="grid grid-cols-[44px_1fr] items-end gap-3 sm:flex">
             <input
               accept="image/*"
               className="hidden"
@@ -344,13 +344,13 @@ export function SecurityChatWindow({
               +
             </button>
             <textarea
-              className="min-h-11 flex-1 resize-none rounded-lg border border-slate-700 bg-slate-950 px-3 py-3 text-sm text-slate-100 outline-none placeholder:text-slate-600 focus:border-slate-500"
+              className="min-h-11 min-w-0 resize-none rounded-lg border border-slate-700 bg-slate-950 px-3 py-3 text-sm text-slate-100 outline-none placeholder:text-slate-600 focus:border-slate-500 sm:flex-1"
               onChange={(event) => setDraft(event.target.value)}
               placeholder="Message security team..."
               value={draft}
             />
             <button
-              className="min-h-11 rounded-lg bg-emerald-400 px-4 text-sm font-bold text-slate-950 transition hover:bg-emerald-300 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
+              className="col-span-2 min-h-11 rounded-lg bg-emerald-400 px-4 text-sm font-bold text-slate-950 transition hover:bg-emerald-300 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400 sm:col-span-1"
               disabled={isSending || (!draft.trim() && !selectedImage)}
               type="submit"
             >

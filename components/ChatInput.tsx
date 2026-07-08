@@ -159,10 +159,10 @@ export function ChatInput({ isSubmitting = false, onSend }: ChatInputProps) {
           </div>
         )}
 
-        <div className="rounded-xl border border-slate-800 bg-slate-900 p-3 shadow-lg shadow-black/30 transition focus-within:border-slate-600">
+        <div className="rounded-xl border border-slate-800 bg-slate-900 p-2.5 shadow-lg shadow-black/30 transition focus-within:border-slate-600 sm:p-3">
           <textarea
             aria-label="Message"
-            className="min-h-24 w-full resize-none bg-transparent px-1 py-1 text-base leading-6 text-slate-100 outline-none placeholder:text-slate-500"
+            className="min-h-20 w-full resize-none bg-transparent px-1 py-1 text-base leading-6 text-slate-100 outline-none placeholder:text-slate-500 sm:min-h-24"
             disabled={isSubmitting}
             onChange={(event) => {
               setInput(event.target.value);
@@ -174,8 +174,8 @@ export function ChatInput({ isSubmitting = false, onSend }: ChatInputProps) {
             value={input}
           />
 
-          <div className="mt-3 flex flex-col gap-3 border-t border-slate-800 pt-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-center gap-3 text-sm font-medium text-slate-300">
+          <div className="mt-2 grid gap-3 border-t border-slate-800 pt-3 sm:mt-3 sm:flex sm:items-center sm:justify-between">
+            <div className="flex min-h-10 items-center justify-between gap-3 text-sm font-medium text-slate-300 sm:justify-start">
               <span>Pro</span>
               <button
                 aria-checked={proToggle}
@@ -198,7 +198,7 @@ export function ChatInput({ isSubmitting = false, onSend }: ChatInputProps) {
             </div>
 
             <button
-              className="inline-flex min-h-10 items-center justify-center rounded-lg bg-slate-100 px-4 text-sm font-semibold text-slate-950 transition hover:bg-white disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
+              className="inline-flex min-h-11 items-center justify-center rounded-lg bg-slate-100 px-4 text-sm font-semibold text-slate-950 transition hover:bg-white disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400 sm:min-h-10"
               disabled={isSubmitting || input.trim().length === 0}
               type="submit"
             >

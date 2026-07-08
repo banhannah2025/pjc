@@ -240,8 +240,8 @@ export function OugmSecurityPortal({
 
   return (
     <section className="border-t border-slate-800 bg-slate-900 p-4">
-      <div className="mb-4 flex items-center justify-between">
-        <div>
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div className="min-w-0">
           <p className="text-xs font-bold tracking-[0.18em] text-emerald-300">
             OUGM SECURITY
           </p>
@@ -254,7 +254,7 @@ export function OugmSecurityPortal({
 
       <div className="rounded-lg border border-slate-800 bg-slate-950/60 p-3">
         <div className="flex items-center justify-between gap-3">
-          <div>
+          <div className="min-w-0">
             <p className="text-sm font-semibold text-slate-100">
               Active Alerts
             </p>
@@ -284,8 +284,8 @@ export function OugmSecurityPortal({
         </div>
       </div>
 
-      <nav className="mt-4 space-y-4">
-        <div>
+      <nav className="mt-4 grid gap-4 sm:grid-cols-2 lg:block lg:space-y-4">
+        <div className="min-w-0">
           <div className="mb-2 flex items-center justify-between gap-2">
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
               Channels
@@ -321,7 +321,7 @@ export function OugmSecurityPortal({
           </div>
         </div>
 
-        <div>
+        <div className="min-w-0">
           <div className="mb-2 flex items-center justify-between gap-2">
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
               Direct Messages
@@ -361,7 +361,7 @@ export function OugmSecurityPortal({
           role="dialog"
         >
           <form
-            className="w-full max-w-sm rounded-lg border border-slate-800 bg-slate-900 p-5 shadow-2xl shadow-black/50"
+          className="w-full max-w-sm rounded-lg border border-slate-800 bg-slate-900 p-5 shadow-2xl shadow-black/50"
             onSubmit={handleCreateRoom}
           >
             <div className="flex items-start justify-between gap-4">
@@ -414,9 +414,9 @@ export function OugmSecurityPortal({
               </p>
             )}
 
-            <div className="mt-5 flex justify-end gap-2">
+            <div className="mt-5 grid gap-2 sm:flex sm:justify-end">
               <button
-                className="rounded-lg border border-slate-700 px-3 py-2 text-sm font-semibold text-slate-300 transition hover:bg-slate-800"
+                className="min-h-10 rounded-lg border border-slate-700 px-3 py-2 text-sm font-semibold text-slate-300 transition hover:bg-slate-800"
                 disabled={isCreatingRoom}
                 onClick={closeCreateRoomModal}
                 type="button"
@@ -424,7 +424,7 @@ export function OugmSecurityPortal({
                 Cancel
               </button>
               <button
-                className="rounded-lg bg-emerald-400 px-3 py-2 text-sm font-bold text-slate-950 transition hover:bg-emerald-300 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
+                className="min-h-10 rounded-lg bg-emerald-400 px-3 py-2 text-sm font-bold text-slate-950 transition hover:bg-emerald-300 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
                 disabled={isCreatingRoom}
                 type="submit"
               >
