@@ -28,6 +28,18 @@ type SecurityChatWindowProps = {
   onClose: () => void;
 };
 
+type SendSecurityMessageResponse = {
+  message?: SecurityMessage;
+  error?: string;
+  detail?: string;
+};
+
+type LoadSecurityMessagesResponse = {
+  messages?: SecurityMessage[];
+  error?: string;
+  detail?: string;
+};
+
 function createClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
@@ -77,18 +89,29 @@ export function SecurityChatWindow({
       }
 
       try {
-        const { data, error: loadError } = await supabase
-          .from("security_messages")
-          .select("*")
-          .eq("room_id", activeRoomId)
-          .order("created_at", { ascending: true });
+        const response = await fetch(
+          `/api/security/messages?roomId=${encodeURIComponent(activeRoomId)}`,
+          {
+            cache: "no-store",
+            method: "GET",
+          }
+        );
+        const payload = (await response.json().catch(() => ({}))) as
+          | LoadSecurityMessagesResponse
+          | undefined;
 
-        if (loadError) {
-          throw loadError;
+        if (!response.ok) {
+          throw new Error(
+            payload?.detail ??
+              payload?.error ??
+              "Unable to load security messages."
+          );
         }
 
         if (isMounted) {
-          setMessages(Array.isArray(data) ? (data as SecurityMessage[]) : []);
+          setMessages(
+            Array.isArray(payload?.messages) ? payload.messages : []
+          );
         }
       } catch (loadError) {
         const safeLoadError = loadError as { message?: string };
@@ -172,31 +195,44 @@ export function SecurityChatWindow({
     setError("");
 
     try {
-      const {
-        data: { user },
-        error: userError,
-      } = await supabase.auth.getUser();
-
-      if (userError) {
-        throw userError;
-      }
-
       const imageUrl = selectedImage
         ? await uploadAttachment(selectedImage, activeRoom.id, supabase)
         : null;
 
-      const { error: insertError } = await supabase
-        .from("security_messages")
-        .insert({
-          room_id: activeRoom.id,
-          sender_id: user?.id ?? null,
-          sender_name: user?.email ?? "Security Operator",
+      const response = await fetch("/api/security/messages", {
+        body: JSON.stringify({
+          roomId: activeRoom.id,
           text,
-          image_url: imageUrl,
-        });
+          imageUrl,
+        }),
+        cache: "no-store",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        method: "POST",
+      });
+      const payload = (await response.json().catch(() => ({}))) as
+        | SendSecurityMessageResponse
+        | undefined;
 
-      if (insertError) {
-        throw insertError;
+      if (!response.ok) {
+        throw new Error(
+          payload?.detail ??
+            payload?.error ??
+            "Unable to send security message."
+        );
+      }
+
+      const sentMessage = payload?.message;
+
+      if (sentMessage) {
+        setMessages((currentMessages) => {
+          if (currentMessages.some((message) => message.id === sentMessage.id)) {
+            return currentMessages;
+          }
+
+          return [...currentMessages, sentMessage];
+        });
       }
 
       setDraft("");
@@ -206,7 +242,11 @@ export function SecurityChatWindow({
       }
     } catch (sendError) {
       console.error("Failed to send OUGM security message.", sendError);
-      setError("Unable to send security message.");
+      setError(
+        sendError instanceof Error
+          ? sendError.message
+          : "Unable to send security message."
+      );
     } finally {
       setIsSending(false);
     }

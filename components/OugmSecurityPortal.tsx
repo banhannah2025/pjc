@@ -1,10 +1,8 @@
 "use client";
 
-import { createBrowserClient } from "@supabase/ssr";
 import {
   type FormEvent,
   useEffect,
-  useMemo,
   useState,
 } from "react";
 
@@ -22,27 +20,28 @@ type ChatRoom = {
   is_group: boolean;
 };
 
+type RoomsResponse = {
+  channels?: ChatRoom[];
+  directMessages?: ChatRoom[];
+  error?: string;
+  detail?: string;
+};
+
+type CreateRoomResponse = {
+  room?: ChatRoom;
+  error?: string;
+  detail?: string;
+};
+
 type OugmSecurityPortalProps = {
   activeRoomId?: string;
   onRoomSelect?: (room: SecurityRoom) => void;
 };
 
-function createClient() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
-
-  if (!supabaseUrl || !supabaseKey) {
-    throw new Error("Missing public Supabase browser environment.");
-  }
-
-  return createBrowserClient(supabaseUrl, supabaseKey);
-}
-
 export function OugmSecurityPortal({
   activeRoomId,
   onRoomSelect,
 }: OugmSecurityPortalProps) {
-  const supabase = useMemo(() => createClient(), []);
   const [isAlertsActive, setIsAlertsActive] = useState(false);
   const [isSavingAlerts, setIsSavingAlerts] = useState(false);
   const [channels, setChannels] = useState<ChatRoom[]>([]);
@@ -61,7 +60,7 @@ export function OugmSecurityPortal({
     let isMounted = true;
 
     async function loadRooms() {
-      const result = await fetchChatRooms(supabase);
+      const result = await fetchChatRooms();
 
       if (!isMounted) {
         return;
@@ -77,7 +76,7 @@ export function OugmSecurityPortal({
     return () => {
       isMounted = false;
     };
-  }, [supabase, roomRefreshKey]);
+  }, [roomRefreshKey]);
 
   useEffect(() => {
     let isMounted = true;
@@ -162,24 +161,35 @@ export function OugmSecurityPortal({
     }
 
     try {
-      const { data, error } = await supabase
-        .from("chat_rooms")
-        .insert([{ name: roomName, is_group: roomType === "group" }])
-        .select("id, name, is_group")
-        .single();
+      const response = await fetch("/api/security/rooms", {
+        body: JSON.stringify({
+          name: roomName,
+          isGroup: roomType === "group",
+        }),
+        cache: "no-store",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        method: "POST",
+      });
+      const payload = (await response.json().catch(() => ({}))) as
+        | CreateRoomResponse
+        | undefined;
 
-      if (error) {
-        throw error;
+      if (!response.ok) {
+        throw new Error(
+          payload?.detail ?? payload?.error ?? "Unable to create room."
+        );
       }
 
-      if (!isChatRoom(data)) {
+      if (!isChatRoom(payload?.room)) {
         throw new Error("Created room payload was not returned in the expected shape.");
       }
 
       onRoomSelect?.({
-        id: data.id,
-        label: formatRoomLabel(data),
-        type: data.is_group ? "channel" : "dm",
+        id: payload.room.id,
+        label: formatRoomLabel(payload.room),
+        type: payload.room.is_group ? "channel" : "dm",
       });
 
       setNewRoomName("");
@@ -192,7 +202,11 @@ export function OugmSecurityPortal({
         "Failed to create OUGM chat room:",
         error instanceof Error ? error.message : error
       );
-      setModalError("Unable to create room. Check permissions and try again.");
+      setModalError(
+        error instanceof Error
+          ? error.message
+          : "Unable to create room. Check permissions and try again."
+      );
     } finally {
       setIsCreatingRoom(false);
     }
@@ -468,50 +482,32 @@ function RoomButton({
   );
 }
 
-async function fetchChatRooms(supabase: ReturnType<typeof createClient>) {
+async function fetchChatRooms() {
   try {
-    const { data: channelRows, error: channelError } = await supabase
-      .from("chat_rooms")
-      .select("id, name, is_group")
-      .eq("is_group", true)
-      .order("name", { ascending: true });
+    const response = await fetch("/api/security/rooms", {
+      cache: "no-store",
+      method: "GET",
+    });
+    const payload = (await response.json().catch(() => ({}))) as
+      | RoomsResponse
+      | undefined;
 
-    if (channelError) {
-      console.error(
-        "Failed to load OUGM security channels:",
-        channelError.message || channelError
-      );
+    if (!response.ok) {
+      console.error("Failed to load OUGM chat rooms:", {
+        status: response.status,
+        detail: payload?.detail ?? payload?.error,
+      });
+
       return {
         channels: [],
         directMessages: [],
-        status: "Room directory unavailable",
-      };
-    }
-
-    const { data: directMessageRows, error: directMessageError } =
-      await supabase
-        .from("chat_rooms")
-        .select("id, name, is_group")
-        .eq("is_group", false)
-        .order("name", { ascending: true });
-
-    if (directMessageError) {
-      console.error(
-        "Failed to load OUGM direct message rooms:",
-        directMessageError.message || directMessageError
-      );
-      return {
-        channels: uniqueRooms(Array.isArray(channelRows) ? channelRows : []),
-        directMessages: [],
-        status: "Direct message directory unavailable",
+        status: payload?.error ?? "Room directory unavailable",
       };
     }
 
     return {
-      channels: uniqueRooms(Array.isArray(channelRows) ? channelRows : []),
-      directMessages: uniqueRooms(
-        Array.isArray(directMessageRows) ? directMessageRows : []
-      ),
+      channels: uniqueRooms(Array.isArray(payload?.channels) ? payload.channels : []),
+      directMessages: uniqueRooms(Array.isArray(payload?.directMessages) ? payload.directMessages : []),
       status: "",
     };
   } catch (error) {
