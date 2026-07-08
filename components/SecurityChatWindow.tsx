@@ -23,7 +23,14 @@ type SecurityMessage = {
   created_at?: string | null;
 };
 
-const MESSAGE_TEXT_COLUMNS = ["text", "content", "message", "body", "message_text"];
+const MESSAGE_TEXT_COLUMNS = [
+  "text_content",
+  "text",
+  "content",
+  "message",
+  "body",
+  "message_text",
+];
 const MESSAGE_IMAGE_COLUMNS = ["image_url", "attachment_url", "media_url", "file_url"];
 
 type SecurityChatWindowProps = {
