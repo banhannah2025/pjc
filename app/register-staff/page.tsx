@@ -1,8 +1,7 @@
 "use client";
 
-import { createBrowserClient } from "@supabase/ssr";
 import { useRouter } from "next/navigation";
-import { type FormEvent, useMemo, useState } from "react";
+import { type FormEvent, useState } from "react";
 
 type Step = 1 | 2;
 
@@ -11,20 +10,13 @@ type ValidateInviteResponse = {
   error?: string;
 };
 
-function createClient() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
-
-  if (!supabaseUrl || !supabaseKey) {
-    throw new Error("Missing public Supabase browser environment.");
-  }
-
-  return createBrowserClient(supabaseUrl, supabaseKey);
-}
+type CreateStaffAccountResponse = {
+  ok?: boolean;
+  error?: string;
+};
 
 export default function RegisterStaffPage() {
   const router = useRouter();
-  const supabase = useMemo(() => createClient(), []);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -89,13 +81,24 @@ export default function RegisterStaffPage() {
     }
 
     try {
-      const { error: signUpError } = await supabase.auth.signUp({
-        email: normalizedEmail,
-        password,
+      const response = await fetch("/api/register-staff/create-account", {
+        body: JSON.stringify({
+          email: normalizedEmail,
+          password,
+        }),
+        headers: {
+          "Content-Type": "application/json",
+        },
+        method: "POST",
       });
+      const payload = (await response.json().catch(() => null)) as
+        | CreateStaffAccountResponse
+        | null;
 
-      if (signUpError) {
-        setError(signUpError.message);
+      if (!response.ok || !payload?.ok) {
+        setError(
+          payload?.error ?? "Account initialization failed. Please try again."
+        );
         return;
       }
 
