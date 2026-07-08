@@ -6,6 +6,11 @@ import { type FormEvent, useMemo, useState } from "react";
 
 type Step = 1 | 2;
 
+type ValidateInviteResponse = {
+  authorized?: boolean;
+  error?: string;
+};
+
 function createClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
@@ -37,13 +42,23 @@ export default function RegisterStaffPage() {
     setError("");
 
     try {
-      const { data, error: inviteError } = await supabase
-        .from("allowed_invites")
-        .select("email")
-        .eq("email", normalizedEmail)
-        .single();
+      const response = await fetch("/api/register-staff/validate-invite", {
+        body: JSON.stringify({ email: normalizedEmail }),
+        headers: {
+          "Content-Type": "application/json",
+        },
+        method: "POST",
+      });
+      const payload = (await response.json().catch(() => null)) as
+        | ValidateInviteResponse
+        | null;
 
-      if (inviteError || !data) {
+      if (!response.ok) {
+        setError(payload?.error ?? "Unable to validate staff invite.");
+        return;
+      }
+
+      if (!payload?.authorized) {
         setError(
           "This email address has not been pre-authorized by an administrator."
         );
