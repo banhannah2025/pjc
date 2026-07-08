@@ -198,7 +198,7 @@ export default function ChatPage() {
         />
       </aside>
 
-      <section className="relative flex min-w-0 flex-1 flex-col">
+      <section className="relative flex min-h-0 min-w-0 flex-1 flex-col">
         <SecurityChatWindow
           activeRoom={activeSecurityRoom}
           onClose={() => setActiveSecurityRoom(null)}
@@ -226,7 +226,7 @@ export default function ChatPage() {
           </div>
         </header>
 
-        <div className="flex-1 overflow-y-auto px-3 pb-44 pt-4 sm:px-6 sm:pb-48 sm:pt-6 lg:px-10">
+        <div className="min-h-0 flex-1 overflow-y-auto px-3 py-4 sm:px-6 sm:py-6 lg:px-10">
           <div className="mx-auto flex w-full max-w-4xl flex-col gap-5">
             {messages.length === 0 ? (
               <EmptyState />
@@ -254,7 +254,7 @@ export default function ChatPage() {
           </div>
         </div>
 
-        <div className="absolute bottom-0 left-0 right-0 border-t border-slate-800 bg-slate-950/95 px-3 py-3 shadow-2xl shadow-black/40 sm:px-6 sm:py-4">
+        <div className="shrink-0 border-t border-slate-800 bg-slate-950/95 px-3 py-3 shadow-2xl shadow-black/40 sm:px-6 sm:py-4">
           <ChatInput isSubmitting={isLoading} onSend={handleSendMessage} />
         </div>
       </section>
