@@ -593,12 +593,13 @@ async function executeStaffAccessCommand(
   const supabaseAdmin = createSupabaseAdminClient();
 
   if (command.action === "invite") {
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+    const redirectTo = `${appUrl.replace(/\/$/, "")}/auth/set-password`;
+
     const { error } = await supabaseAdmin.auth.admin.inviteUserByEmail(
       command.email,
       {
-        redirectTo: `${
-          process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"
-        }/auth/set-password`,
+        redirectTo,
         data: { role: "staff" },
       }
     );
