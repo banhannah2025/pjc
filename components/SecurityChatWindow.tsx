@@ -18,6 +18,10 @@ type SecurityMessage = {
   room_id: string;
   sender_id?: string | null;
   sender_name?: string | null;
+  profiles?: {
+    email?: string | null;
+    name?: string | null;
+  } | null;
   text?: string | null;
   image_url?: string | null;
   created_at?: string | null;
@@ -319,7 +323,7 @@ export function SecurityChatWindow({
                 >
                   <div className="mb-2 flex items-start justify-between gap-3">
                     <p className="truncate text-sm font-semibold text-slate-200">
-                      {message.sender_name ?? "Security Operator"}
+                      {renderSenderName(message)}
                     </p>
                     <time className="shrink-0 text-xs text-slate-600">
                       {formatTimestamp(message.created_at)}
@@ -463,13 +467,49 @@ function normalizeSecurityMessage(value: unknown): SecurityMessage {
     id: typeof record.id === "string" ? record.id : crypto.randomUUID(),
     room_id: typeof record.room_id === "string" ? record.room_id : "",
     sender_id: typeof record.sender_id === "string" ? record.sender_id : null,
+    profiles: normalizeSenderProfile(record.profiles),
     sender_name:
-      typeof record.sender_name === "string" ? record.sender_name : null,
+      readSenderName(record),
     text: readFirstString(record, MESSAGE_TEXT_COLUMNS),
     image_url: readFirstString(record, MESSAGE_IMAGE_COLUMNS),
     created_at:
       typeof record.created_at === "string" ? record.created_at : null,
   };
+}
+
+function readSenderName(record: Record<string, unknown>) {
+  const profiles = normalizeSenderProfile(record.profiles);
+
+  return (
+    profiles?.email ??
+    profiles?.name ??
+    (typeof record.sender_name === "string" ? record.sender_name : null)
+  );
+}
+
+function normalizeSenderProfile(value: unknown) {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return null;
+  }
+
+  const record = value as Record<string, unknown>;
+  const email = typeof record.email === "string" ? record.email : null;
+  const name = typeof record.name === "string" ? record.name : null;
+
+  if (!email && !name) {
+    return null;
+  }
+
+  return { email, name };
+}
+
+function renderSenderName(message: SecurityMessage) {
+  return (
+    message.profiles?.email ??
+    message.profiles?.name ??
+    message.sender_name ??
+    "Security Operator"
+  );
 }
 
 function readFirstString(record: Record<string, unknown>, keys: string[]) {

@@ -16,9 +16,15 @@ type SecurityMessage = {
   room_id: string;
   sender_id: string | null;
   sender_name?: string | null;
+  profiles?: SenderProfile | null;
   text: string | null;
   image_url: string | null;
   created_at: string | null;
+};
+
+type SenderProfile = {
+  email?: string | null;
+  name?: string | null;
 };
 
 type SendSecurityMessageSuccess = {
@@ -87,11 +93,10 @@ export async function GET(
     }
 
     const supabaseAdmin = createSupabaseAdminClient();
-    const { data, error: loadError } = await supabaseAdmin
-      .from("security_messages")
-      .select("*")
-      .eq("room_id", roomId)
-      .order("created_at", { ascending: true });
+    const { data, error: loadError } = await loadMessagesForRoom(
+      supabaseAdmin,
+      roomId
+    );
 
     if (loadError) {
       console.error("Failed to load OUGM security messages.", loadError);
@@ -160,6 +165,7 @@ export async function POST(
 
     const { roomId, text, imageUrl } = parsedBody.value;
     const supabaseAdmin = createSupabaseAdminClient();
+    const senderProfile = await loadSenderProfile(supabaseAdmin, user.id);
     const { data, error: insertError } = await insertSecurityMessage({
       supabaseAdmin,
       roomId,
@@ -183,7 +189,9 @@ export async function POST(
     return NextResponse.json({
       message: {
         ...normalizeSecurityMessage(data),
-        sender_name: user.email ?? "Security Operator",
+        profiles: senderProfile,
+        sender_name:
+          senderProfile?.email ?? senderProfile?.name ?? user.email ?? null,
       },
     });
   } catch (error) {
@@ -229,6 +237,96 @@ function createSupabaseAdminClient() {
       persistSession: false,
     },
   });
+}
+
+async function loadMessagesForRoom(
+  supabaseAdmin: ReturnType<typeof createSupabaseAdminClient>,
+  roomId: string
+) {
+  const richSelect = "*, profiles:sender_id(email, name)";
+  const emailOnlySelect = "*, profiles:sender_id(email)";
+  const baseQuery = () =>
+    supabaseAdmin
+      .from("security_messages")
+      .select(richSelect)
+      .eq("room_id", roomId)
+      .order("created_at", { ascending: true });
+
+  const richResult = await baseQuery();
+
+  if (!richResult.error) {
+    return richResult;
+  }
+
+  if (
+    !isMissingColumnError(richResult.error.message) &&
+    !isRelationshipError(richResult.error.message)
+  ) {
+    return richResult;
+  }
+
+  console.warn(
+    "Retrying OUGM security message load with profile fallback.",
+    richResult.error.message
+  );
+
+  const emailOnlyResult = await supabaseAdmin
+    .from("security_messages")
+    .select(emailOnlySelect)
+    .eq("room_id", roomId)
+    .order("created_at", { ascending: true });
+
+  if (!emailOnlyResult.error) {
+    return emailOnlyResult;
+  }
+
+  if (!isRelationshipError(emailOnlyResult.error.message)) {
+    return emailOnlyResult;
+  }
+
+  console.warn(
+    "Retrying OUGM security message load without profile relationship.",
+    emailOnlyResult.error.message
+  );
+
+  return supabaseAdmin
+    .from("security_messages")
+    .select("*")
+    .eq("room_id", roomId)
+    .order("created_at", { ascending: true });
+}
+
+async function loadSenderProfile(
+  supabaseAdmin: ReturnType<typeof createSupabaseAdminClient>,
+  senderId: string
+): Promise<SenderProfile | null> {
+  const richProfile = await supabaseAdmin
+    .from("profiles")
+    .select("email, name")
+    .eq("id", senderId)
+    .maybeSingle();
+
+  if (!richProfile.error) {
+    return normalizeSenderProfile(richProfile.data);
+  }
+
+  if (!isMissingColumnError(richProfile.error.message)) {
+    console.error("Failed to load sender profile metadata.", richProfile.error);
+    return null;
+  }
+
+  const emailOnlyProfile = await supabaseAdmin
+    .from("profiles")
+    .select("email")
+    .eq("id", senderId)
+    .maybeSingle();
+
+  if (emailOnlyProfile.error) {
+    console.error("Failed to load sender profile email.", emailOnlyProfile.error);
+    return null;
+  }
+
+  return normalizeSenderProfile(emailOnlyProfile.data);
 }
 
 async function insertSecurityMessage({
@@ -293,18 +391,37 @@ async function insertSecurityMessage({
 
 function normalizeSecurityMessage(value: unknown): SecurityMessage {
   const record = isRecord(value) ? value : {};
+  const profiles = normalizeSenderProfile(record.profiles);
 
   return {
     id: typeof record.id === "string" ? record.id : crypto.randomUUID(),
     room_id: typeof record.room_id === "string" ? record.room_id : "",
     sender_id: typeof record.sender_id === "string" ? record.sender_id : null,
     sender_name:
-      typeof record.sender_name === "string" ? record.sender_name : null,
+      profiles?.email ??
+      profiles?.name ??
+      (typeof record.sender_name === "string" ? record.sender_name : null),
+    profiles,
     text: readFirstString(record, MESSAGE_TEXT_COLUMNS),
     image_url: readFirstString(record, MESSAGE_IMAGE_COLUMNS),
     created_at:
       typeof record.created_at === "string" ? record.created_at : null,
   };
+}
+
+function normalizeSenderProfile(value: unknown): SenderProfile | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const email = typeof value.email === "string" ? value.email : null;
+  const name = typeof value.name === "string" ? value.name : null;
+
+  if (!email && !name) {
+    return null;
+  }
+
+  return { email, name };
 }
 
 function readFirstString(record: Record<string, unknown>, keys: string[]) {
@@ -324,6 +441,15 @@ function isMissingColumnError(message: string | undefined) {
     typeof message === "string" &&
     message.includes("Could not find the") &&
     message.includes("column")
+  );
+}
+
+function isRelationshipError(message: string | undefined) {
+  return (
+    typeof message === "string" &&
+    (message.includes("relationship") ||
+      message.includes("foreign key") ||
+      message.includes("Could not find a relationship"))
   );
 }
 
