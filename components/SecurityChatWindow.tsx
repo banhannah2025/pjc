@@ -23,6 +23,9 @@ type SecurityMessage = {
   created_at?: string | null;
 };
 
+const MESSAGE_TEXT_COLUMNS = ["text", "content", "message", "body", "message_text"];
+const MESSAGE_IMAGE_COLUMNS = ["image_url", "attachment_url", "media_url", "file_url"];
+
 type SecurityChatWindowProps = {
   activeRoom: SecurityRoom | null;
   onClose: () => void;
@@ -147,7 +150,7 @@ export function SecurityChatWindow({
           filter: `room_id=eq.${room.id}`,
         },
         (payload) => {
-          const nextMessage = payload.new as SecurityMessage;
+          const nextMessage = normalizeSecurityMessage(payload.new);
           setMessages((currentMessages) => {
             if (
               currentMessages.some((message) => message.id === nextMessage.id)
@@ -441,6 +444,37 @@ function isValidImageUrl(value: string | null | undefined): value is string {
   } catch {
     return false;
   }
+}
+
+function normalizeSecurityMessage(value: unknown): SecurityMessage {
+  const record =
+    typeof value === "object" && value !== null
+      ? (value as Record<string, unknown>)
+      : {};
+
+  return {
+    id: typeof record.id === "string" ? record.id : crypto.randomUUID(),
+    room_id: typeof record.room_id === "string" ? record.room_id : "",
+    sender_id: typeof record.sender_id === "string" ? record.sender_id : null,
+    sender_name:
+      typeof record.sender_name === "string" ? record.sender_name : null,
+    text: readFirstString(record, MESSAGE_TEXT_COLUMNS),
+    image_url: readFirstString(record, MESSAGE_IMAGE_COLUMNS),
+    created_at:
+      typeof record.created_at === "string" ? record.created_at : null,
+  };
+}
+
+function readFirstString(record: Record<string, unknown>, keys: string[]) {
+  for (const key of keys) {
+    const value = record[key];
+
+    if (typeof value === "string") {
+      return value;
+    }
+  }
+
+  return null;
 }
 
 function formatTimestamp(value: string | null | undefined) {

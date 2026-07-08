@@ -36,6 +36,8 @@ type SendSecurityMessageError = {
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SUPABASE_SECRET_KEY = process.env.SUPABASE_SECRET_KEY;
+const MESSAGE_TEXT_COLUMNS = ["text", "content", "message", "body", "message_text"];
+const MESSAGE_IMAGE_COLUMNS = ["image_url", "attachment_url", "media_url", "file_url"];
 
 export async function GET(
   req: Request
@@ -97,7 +99,7 @@ export async function GET(
     }
 
     return NextResponse.json({
-      messages: Array.isArray(data) ? (data as SecurityMessage[]) : [],
+      messages: Array.isArray(data) ? data.map(normalizeSecurityMessage) : [],
     });
   } catch (error) {
     console.error("OUGM security message load route failed.", error);
@@ -151,16 +153,13 @@ export async function POST(
 
     const { roomId, text, imageUrl } = parsedBody.value;
     const supabaseAdmin = createSupabaseAdminClient();
-    const { data, error: insertError } = await supabaseAdmin
-      .from("security_messages")
-      .insert({
-        room_id: roomId,
-        sender_id: user.id,
-        text: text || null,
-        image_url: imageUrl ?? null,
-      })
-      .select("*")
-      .single();
+    const { data, error: insertError } = await insertSecurityMessage({
+      supabaseAdmin,
+      roomId,
+      senderId: user.id,
+      text,
+      imageUrl: imageUrl ?? null,
+    });
 
     if (insertError) {
       console.error("Failed to insert OUGM security message.", insertError);
@@ -176,7 +175,7 @@ export async function POST(
 
     return NextResponse.json({
       message: {
-        ...(data as SecurityMessage),
+        ...normalizeSecurityMessage(data),
         sender_name: user.email ?? "Security Operator",
       },
     });
@@ -223,6 +222,102 @@ function createSupabaseAdminClient() {
       persistSession: false,
     },
   });
+}
+
+async function insertSecurityMessage({
+  supabaseAdmin,
+  roomId,
+  senderId,
+  text,
+  imageUrl,
+}: {
+  supabaseAdmin: ReturnType<typeof createSupabaseAdminClient>;
+  roomId: string;
+  senderId: string;
+  text: string;
+  imageUrl: string | null;
+}) {
+  const imageColumnCandidates = imageUrl ? MESSAGE_IMAGE_COLUMNS : [null];
+  let lastError: { message?: string } | null = null;
+
+  for (const textColumn of MESSAGE_TEXT_COLUMNS) {
+    for (const imageColumn of imageColumnCandidates) {
+      const insertPayload: Record<string, string | null> = {
+        room_id: roomId,
+        sender_id: senderId,
+        [textColumn]: text || null,
+      };
+
+      if (imageColumn && imageUrl) {
+        insertPayload[imageColumn] = imageUrl;
+      }
+
+      const { data, error } = await supabaseAdmin
+        .from("security_messages")
+        .insert(insertPayload)
+        .select("*")
+        .single();
+
+      if (!error) {
+        return { data, error: null };
+      }
+
+      lastError = error;
+
+      if (!isMissingColumnError(error.message)) {
+        return { data: null, error };
+      }
+
+      console.warn("Retrying OUGM security message insert with schema fallback.", {
+        skippedTextColumn: textColumn,
+        skippedImageColumn: imageColumn,
+        error: error.message,
+      });
+    }
+  }
+
+  return {
+    data: null,
+    error:
+      lastError ??
+      new Error("No compatible security message content column was found."),
+  };
+}
+
+function normalizeSecurityMessage(value: unknown): SecurityMessage {
+  const record = isRecord(value) ? value : {};
+
+  return {
+    id: typeof record.id === "string" ? record.id : crypto.randomUUID(),
+    room_id: typeof record.room_id === "string" ? record.room_id : "",
+    sender_id: typeof record.sender_id === "string" ? record.sender_id : null,
+    sender_name:
+      typeof record.sender_name === "string" ? record.sender_name : null,
+    text: readFirstString(record, MESSAGE_TEXT_COLUMNS),
+    image_url: readFirstString(record, MESSAGE_IMAGE_COLUMNS),
+    created_at:
+      typeof record.created_at === "string" ? record.created_at : null,
+  };
+}
+
+function readFirstString(record: Record<string, unknown>, keys: string[]) {
+  for (const key of keys) {
+    const value = record[key];
+
+    if (typeof value === "string") {
+      return value;
+    }
+  }
+
+  return null;
+}
+
+function isMissingColumnError(message: string | undefined) {
+  return (
+    typeof message === "string" &&
+    message.includes("Could not find the") &&
+    message.includes("column")
+  );
 }
 
 async function parseSecurityMessageRequest(
