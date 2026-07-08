@@ -590,32 +590,24 @@ async function executeStaffAccessCommand(
     return UNAUTHORIZED_ADMIN_COMMAND_MESSAGE;
   }
 
-  const supabaseAdmin = createSupabaseAdminClient();
-
   if (command.action === "invite") {
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
-    const redirectTo = `${appUrl.replace(/\/$/, "")}/auth/set-password`;
-
-    const { error } = await supabaseAdmin.auth.admin.inviteUserByEmail(
-      command.email,
-      {
-        redirectTo,
-        data: { role: "staff" },
-      }
-    );
+    const { error } = await supabase
+      .from("allowed_invites")
+      .insert([{ email: command.email, assigned_role: "staff" }]);
 
     if (error) {
-      console.error("Failed to generate Supabase staff invitation.", {
+      console.error("Failed to whitelist OUGM staff invite.", {
         email: command.email,
         error: error.message || error,
       });
 
-      return `Supabase invitation failed for ${command.email}: ${error.message}`;
+      throw new Error(`Failed to whitelist staff email: ${error.message}`);
     }
 
-    return `Invitation successfully generated. Supabase has dispatched a secure authentication token link to ${command.email}.`;
+    return `Successfully whitelisted ${command.email} for internal staff credentials. Instruct them to visit our registration portal at '/register-staff' to initialize their password profile.`;
   }
 
+  const supabaseAdmin = createSupabaseAdminClient();
   const authUserId = await resolveAuthUserIdForEmail(command.email, supabase, supabaseAdmin);
 
   if (authUserId) {
