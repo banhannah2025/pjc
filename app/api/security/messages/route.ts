@@ -15,7 +15,7 @@ type SecurityMessage = {
   id: string;
   room_id: string;
   sender_id: string | null;
-  sender_name: string | null;
+  sender_name?: string | null;
   text: string | null;
   image_url: string | null;
   created_at: string | null;
@@ -156,7 +156,6 @@ export async function POST(
       .insert({
         room_id: roomId,
         sender_id: user.id,
-        sender_name: user.email ?? "Security Operator",
         text: text || null,
         image_url: imageUrl ?? null,
       })
@@ -175,7 +174,12 @@ export async function POST(
       );
     }
 
-    return NextResponse.json({ message: data as SecurityMessage });
+    return NextResponse.json({
+      message: {
+        ...(data as SecurityMessage),
+        sender_name: user.email ?? "Security Operator",
+      },
+    });
   } catch (error) {
     console.error("OUGM security message route failed.", error);
 
