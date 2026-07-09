@@ -20,6 +20,8 @@ type SecurityMessage = {
   sender_name?: string | null;
   profiles?: {
     email?: string | null;
+    first_name?: string | null;
+    last_name?: string | null;
     name?: string | null;
   } | null;
   text?: string | null;
@@ -481,6 +483,10 @@ function normalizeSecurityMessage(value: unknown): SecurityMessage {
 function readSenderName(record: Record<string, unknown>) {
   const profiles = normalizeSenderProfile(record.profiles);
 
+  if (profiles?.first_name && profiles?.last_name) {
+    return `${profiles.first_name} ${profiles.last_name}`;
+  }
+
   return (
     profiles?.email ??
     profiles?.name ??
@@ -495,16 +501,23 @@ function normalizeSenderProfile(value: unknown) {
 
   const record = value as Record<string, unknown>;
   const email = typeof record.email === "string" ? record.email : null;
+  const firstName =
+    typeof record.first_name === "string" ? record.first_name : null;
+  const lastName = typeof record.last_name === "string" ? record.last_name : null;
   const name = typeof record.name === "string" ? record.name : null;
 
-  if (!email && !name) {
+  if (!email && !firstName && !lastName && !name) {
     return null;
   }
 
-  return { email, name };
+  return { email, first_name: firstName, last_name: lastName, name };
 }
 
 function renderSenderName(message: SecurityMessage) {
+  if (message.profiles?.first_name && message.profiles?.last_name) {
+    return `${message.profiles.first_name} ${message.profiles.last_name}`;
+  }
+
   return (
     message.profiles?.email ??
     message.profiles?.name ??

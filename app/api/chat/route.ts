@@ -16,7 +16,6 @@ type TriageIntent = "CODE" | "ACADEMIC" | "GENERAL";
 type ModelActor = "gpt-5.5-pro" | "gpt-4o-mini" | "gpt-5.4";
 type UserRole = "admin" | "staff" | "guest";
 type ToolName = "fetch_live_web_context" | "query_local_db" | "manage_staff_access";
-type StaffAccessAction = "invite" | "remove";
 
 type ChatSuccessPayload = {
   text: string;
@@ -36,10 +35,17 @@ type SecurityContext = {
   allowedTools: Set<ToolName>;
 };
 
-type StaffAccessCommand = {
-  action: StaffAccessAction;
-  email: string;
-};
+type StaffAccessCommand =
+  | {
+      action: "invite";
+      email: string;
+      firstName: string;
+      lastName: string;
+    }
+  | {
+      action: "remove";
+      email: string;
+    };
 
 const PRO_MODEL = "gpt-5.5-pro" satisfies ModelActor;
 const TRIAGE_MODEL = "gpt-4o-mini" satisfies ModelActor;
@@ -48,7 +54,7 @@ const ACADEMIC_MODEL = "gpt-5.4" satisfies ModelActor;
 const GENERAL_MODEL = "gpt-4o-mini" satisfies ModelActor;
 const UNAUTHORIZED_ADMIN_COMMAND_MESSAGE = "Unauthorized command attempt logged.";
 const OPERATIONAL_GATEWAY_SYSTEM_INSTRUCTION =
-  "You are an operational gateway agent. When a user types a command starting with a slash, parse the arguments, invoke the 'manage_staff_access' tool immediately, and present a professional confirmation message back to the terminal view.";
+  "You are an operational gateway agent. When a user types a command starting with a slash, parse the arguments, invoke the 'manage_staff_access' tool immediately, and present a professional confirmation message back to the terminal view. The invite command syntax is /ougm-invite-staff [email] [first_name] [last_name]. The removal command syntax is /ougm-remove-staff [email].";
 const GUEST_SECURITY_SYSTEM_INSTRUCTION =
   "User is an unauthenticated general guest. Access to all internal security dashboard files, database tables, and metrics is strictly classified. Confine responses purely to general public domain data.";
 
@@ -491,7 +497,7 @@ function buildAllowedTools(
       function: {
         name: "manage_staff_access",
         description:
-          "Executes administrative staff credential provisioning or removal. Trigger this tool whenever the user passes explicit slash commands matching '/ougm-invite-staff [email]' or '/ougm-remove-staff [email]'.",
+          "Executes administrative staff credential provisioning or removal. Trigger this tool whenever the user passes explicit slash commands matching '/ougm-invite-staff [email] [first_name] [last_name]' or '/ougm-remove-staff [email]'.",
         parameters: {
           type: "object",
           properties: {
@@ -505,6 +511,16 @@ function buildAllowedTools(
               type: "string",
               format: "email",
               description: "The staff email address to provision or remove.",
+            },
+            first_name: {
+              type: "string",
+              description:
+                "Required for invite actions. The staff member's first name.",
+            },
+            last_name: {
+              type: "string",
+              description:
+                "Required for invite actions. The staff member's last name.",
             },
           },
           required: ["action", "email"],
@@ -593,18 +609,27 @@ async function executeStaffAccessCommand(
   if (command.action === "invite") {
     const { error } = await supabase
       .from("allowed_invites")
-      .insert([{ email: command.email, assigned_role: "staff" }]);
+      .insert([
+        {
+          email: command.email,
+          first_name: command.firstName,
+          last_name: command.lastName,
+          assigned_role: "staff",
+        },
+      ]);
 
     if (error) {
       console.error("Failed to whitelist OUGM staff invite.", {
         email: command.email,
+        firstName: command.firstName,
+        lastName: command.lastName,
         error: error.message || error,
       });
 
       throw new Error(`Failed to whitelist staff email: ${error.message}`);
     }
 
-    return `Successfully whitelisted ${command.email} for internal staff credentials. Instruct them to visit our registration portal at '/register-staff' to initialize their password profile.`;
+    return `Successfully whitelisted ${command.firstName} ${command.lastName} (${command.email}) for OUGM staff clearance.`;
   }
 
   const supabaseAdmin = createSupabaseAdminClient();
@@ -720,22 +745,47 @@ async function resolveAuthUserIdForEmail(
 
 function parseStaffAccessSlashCommand(message: string): StaffAccessCommand | null {
   const trimmedMessage = message.trim();
-  const match = /^\/ougm-(invite|remove)-staff\s+([^\s]+)$/i.exec(
-    trimmedMessage
-  );
+  const inviteMatch =
+    /^\/ougm-invite-staff\s+([^\s]+)\s+([^\s]+)\s+([^\s]+)$/i.exec(
+      trimmedMessage
+    );
 
-  if (!match) {
+  if (inviteMatch) {
+    const email = normalizeEmail(inviteMatch[1] ?? "");
+    const firstName = normalizeStaffName(inviteMatch[2] ?? "");
+    const lastName = normalizeStaffName(inviteMatch[3] ?? "");
+
+    if (!isValidEmail(email)) {
+      throw new Error("OUGM staff invite command requires a valid email address.");
+    }
+
+    if (!firstName || !lastName) {
+      throw new Error(
+        "OUGM staff invite command requires first and last name arguments."
+      );
+    }
+
+    return {
+      action: "invite",
+      email,
+      firstName,
+      lastName,
+    };
+  }
+
+  const removeMatch = /^\/ougm-remove-staff\s+([^\s]+)$/i.exec(trimmedMessage);
+
+  if (!removeMatch) {
     return null;
   }
 
-  const action = match[1]?.toLowerCase() === "invite" ? "invite" : "remove";
-  const email = normalizeEmail(match[2] ?? "");
+  const email = normalizeEmail(removeMatch[1] ?? "");
 
   if (!isValidEmail(email)) {
-    throw new Error("OUGM staff command requires a valid email address.");
+    throw new Error("OUGM staff removal command requires a valid email address.");
   }
 
-  return { action, email };
+  return { action: "remove", email };
 }
 
 function parseStaffAccessToolArguments(argumentsJson: string): StaffAccessCommand {
@@ -747,11 +797,7 @@ function parseStaffAccessToolArguments(argumentsJson: string): StaffAccessComman
     throw new Error("Staff management tool arguments were not valid JSON.");
   }
 
-  if (
-    !isRecord(parsed) ||
-    (parsed.action !== "invite" && parsed.action !== "remove") ||
-    typeof parsed.email !== "string"
-  ) {
+  if (!isRecord(parsed) || typeof parsed.email !== "string") {
     throw new Error("Staff management tool call requires action and email.");
   }
 
@@ -761,10 +807,39 @@ function parseStaffAccessToolArguments(argumentsJson: string): StaffAccessComman
     throw new Error("Staff management tool call requires a valid email address.");
   }
 
-  return {
-    action: parsed.action,
-    email,
-  };
+  if (parsed.action === "invite") {
+    if (
+      typeof parsed.first_name !== "string" ||
+      typeof parsed.last_name !== "string"
+    ) {
+      throw new Error(
+        "Staff invite tool call requires email, first_name, and last_name."
+      );
+    }
+
+    const firstName = normalizeStaffName(parsed.first_name);
+    const lastName = normalizeStaffName(parsed.last_name);
+
+    if (!firstName || !lastName) {
+      throw new Error("Staff invite tool call requires non-empty staff names.");
+    }
+
+    return {
+      action: "invite",
+      email,
+      firstName,
+      lastName,
+    };
+  }
+
+  if (parsed.action === "remove") {
+    return {
+      action: "remove",
+      email,
+    };
+  }
+
+  throw new Error("Staff management tool call requires a valid action.");
 }
 
 function parseWebSearchToolArguments(argumentsJson: string) {
@@ -912,6 +987,10 @@ function isToolName(value: string): value is ToolName {
 
 function normalizeEmail(value: string) {
   return value.trim().toLowerCase();
+}
+
+function normalizeStaffName(value: string) {
+  return value.trim().replace(/\s+/g, " ");
 }
 
 function isValidEmail(value: string) {

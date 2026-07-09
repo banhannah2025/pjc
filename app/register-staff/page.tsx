@@ -7,6 +7,8 @@ type Step = 1 | 2;
 
 type ValidateInviteResponse = {
   authorized?: boolean;
+  firstName?: string | null;
+  lastName?: string | null;
   error?: string;
 };
 
@@ -20,6 +22,8 @@ export default function RegisterStaffPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [savedFirstName, setSavedFirstName] = useState("");
+  const [savedLastName, setSavedLastName] = useState("");
   const [step, setStep] = useState<Step>(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -58,6 +62,8 @@ export default function RegisterStaffPage() {
       }
 
       setEmail(normalizedEmail);
+      setSavedFirstName(payload.firstName?.trim() ?? "");
+      setSavedLastName(payload.lastName?.trim() ?? "");
       setStep(2);
     } catch (validationError) {
       console.error("Failed to validate OUGM staff invite.", validationError);
@@ -85,6 +91,8 @@ export default function RegisterStaffPage() {
         body: JSON.stringify({
           email: normalizedEmail,
           password,
+          firstName: savedFirstName,
+          lastName: savedLastName,
         }),
         headers: {
           "Content-Type": "application/json",
@@ -207,6 +215,14 @@ export default function RegisterStaffPage() {
             <div className="border border-slate-800 bg-slate-950 px-3 py-2 font-mono text-xs text-slate-400">
               Authorized email:{" "}
               <span className="text-amber-200">{normalizedEmail}</span>
+              {(savedFirstName || savedLastName) && (
+                <span className="mt-1 block text-slate-300">
+                  Staff name:{" "}
+                  <span className="text-amber-200">
+                    {[savedFirstName, savedLastName].filter(Boolean).join(" ")}
+                  </span>
+                </span>
+              )}
             </div>
 
             <div className="space-y-2">

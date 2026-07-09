@@ -25,6 +25,8 @@ type SecurityMessage = {
 type SenderProfile = {
   id?: string | null;
   email?: string | null;
+  first_name?: string | null;
+  last_name?: string | null;
   name?: string | null;
 };
 
@@ -196,8 +198,7 @@ export async function POST(
       message: {
         ...normalizeSecurityMessage(data),
         profiles: senderProfile,
-        sender_name:
-          senderProfile?.email ?? senderProfile?.name ?? user.email ?? null,
+        sender_name: formatSenderDisplayName(senderProfile) ?? user.email ?? null,
       },
     });
   } catch (error) {
@@ -291,10 +292,12 @@ async function enrichMessagesWithSenderProfiles({
     const sessionProfile =
       message.sender_id === currentUserId && currentUserEmail
         ? {
-            id: currentUserId,
-            email: currentUserEmail,
-            name: null,
-          }
+          id: currentUserId,
+          email: currentUserEmail,
+          first_name: null,
+          last_name: null,
+          name: null,
+        }
         : null;
     const profile = message.sender_id
       ? profileMap.get(message.sender_id) ??
@@ -306,7 +309,7 @@ async function enrichMessagesWithSenderProfiles({
       ...message,
       profiles: profile,
       sender_name:
-        profile?.email ?? profile?.name ?? message.sender_name ?? null,
+        formatSenderDisplayName(profile) ?? message.sender_name ?? null,
     };
   });
 }
@@ -318,7 +321,7 @@ async function loadSenderProfiles(
   const profileMap = new Map<string, SenderProfile>();
   const richProfiles = await supabaseAdmin
     .from("profiles")
-    .select("id, email, name")
+    .select("id, email, first_name, last_name, name")
     .in("id", senderIds);
 
   if (!richProfiles.error) {
@@ -388,6 +391,8 @@ async function loadAuthSenderProfiles(
           profileMap.set(senderId, {
             id: senderId,
             email: data.user.email,
+            first_name: readMetadataString(data.user.user_metadata, "first_name"),
+            last_name: readMetadataString(data.user.user_metadata, "last_name"),
             name: null,
           });
         }
@@ -409,14 +414,14 @@ async function loadSenderProfile(
 ): Promise<SenderProfile | null> {
   const richProfile = await supabaseAdmin
     .from("profiles")
-    .select("email, name")
+    .select("email, first_name, last_name, name")
     .eq("id", senderId)
     .maybeSingle();
 
   if (!richProfile.error) {
     const profile = normalizeSenderProfile(richProfile.data);
 
-    if (profile?.email || profile?.name) {
+    if (hasSenderDisplayValue(profile)) {
       return profile;
     }
 
@@ -444,7 +449,7 @@ async function loadSenderProfile(
 
   const profile = normalizeSenderProfile(emailOnlyProfile.data);
 
-  if (profile?.email || profile?.name) {
+  if (hasSenderDisplayValue(profile)) {
     return profile;
   }
 
@@ -521,8 +526,7 @@ function normalizeSecurityMessage(value: unknown): SecurityMessage {
     room_id: typeof record.room_id === "string" ? record.room_id : "",
     sender_id: typeof record.sender_id === "string" ? record.sender_id : null,
     sender_name:
-      profiles?.email ??
-      profiles?.name ??
+      formatSenderDisplayName(profiles) ??
       (typeof record.sender_name === "string" ? record.sender_name : null),
     profiles,
     text: readFirstString(record, MESSAGE_TEXT_COLUMNS),
@@ -538,14 +542,45 @@ function normalizeSenderProfile(value: unknown): SenderProfile | null {
   }
 
   const email = typeof value.email === "string" ? value.email : null;
+  const firstName =
+    typeof value.first_name === "string" ? value.first_name : null;
+  const lastName = typeof value.last_name === "string" ? value.last_name : null;
   const name = typeof value.name === "string" ? value.name : null;
   const id = typeof value.id === "string" ? value.id : null;
 
-  if (!email && !name) {
+  if (!email && !firstName && !lastName && !name) {
     return null;
   }
 
-  return { id, email, name };
+  return { id, email, first_name: firstName, last_name: lastName, name };
+}
+
+function hasSenderDisplayValue(profile: SenderProfile | null) {
+  return Boolean(
+    profile?.first_name || profile?.last_name || profile?.email || profile?.name
+  );
+}
+
+function formatSenderDisplayName(profile: SenderProfile | null) {
+  if (!profile) {
+    return null;
+  }
+
+  if (profile.first_name && profile.last_name) {
+    return `${profile.first_name} ${profile.last_name}`;
+  }
+
+  return profile.email ?? profile.name ?? null;
+}
+
+function readMetadataString(
+  metadata: Record<string, unknown> | null | undefined,
+  key: string
+) {
+  const value = metadata?.[key];
+  return typeof value === "string" && value.trim().length > 0
+    ? value.trim()
+    : null;
 }
 
 function readFirstString(record: Record<string, unknown>, keys: string[]) {

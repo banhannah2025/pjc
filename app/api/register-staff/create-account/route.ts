@@ -26,7 +26,7 @@ export async function POST(
     const supabaseAdmin = createSupabaseAdminClient();
     const { data: invite, error: inviteError } = await supabaseAdmin
       .from("allowed_invites")
-      .select("email, assigned_role")
+      .select("email, assigned_role, first_name, last_name")
       .eq("email", parsedBody.email)
       .maybeSingle();
 
@@ -53,12 +53,19 @@ export async function POST(
     }
 
     const assignedRole = invite.assigned_role === "admin" ? "admin" : "staff";
+    const firstName =
+      typeof invite.first_name === "string" ? invite.first_name.trim() : "";
+    const lastName =
+      typeof invite.last_name === "string" ? invite.last_name.trim() : "";
     const { data: authData, error: createUserError } =
       await supabaseAdmin.auth.admin.createUser({
         email: parsedBody.email,
         password: parsedBody.password,
         email_confirm: true,
         user_metadata: {
+          first_name: firstName,
+          last_name: lastName,
+          name: [firstName, lastName].filter(Boolean).join(" "),
           role: assignedRole,
         },
         app_metadata: {
@@ -86,6 +93,8 @@ export async function POST(
       {
         id: authData.user.id,
         email: parsedBody.email,
+        first_name: firstName,
+        last_name: lastName,
         role: assignedRole,
       },
       { onConflict: "id" }

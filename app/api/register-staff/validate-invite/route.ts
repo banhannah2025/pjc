@@ -5,6 +5,8 @@ export const runtime = "nodejs";
 
 type ValidateInviteSuccessPayload = {
   authorized: boolean;
+  firstName?: string | null;
+  lastName?: string | null;
 };
 
 type ValidateInviteErrorPayload = {
@@ -26,7 +28,7 @@ export async function POST(
     const supabaseAdmin = createSupabaseAdminClient();
     const { data, error } = await supabaseAdmin
       .from("allowed_invites")
-      .select("email")
+      .select("email, first_name, last_name")
       .eq("email", parsedBody.email)
       .maybeSingle();
 
@@ -42,7 +44,12 @@ export async function POST(
       );
     }
 
-    return NextResponse.json({ authorized: Boolean(data) });
+    return NextResponse.json({
+      authorized: Boolean(data),
+      firstName:
+        typeof data?.first_name === "string" ? data.first_name : null,
+      lastName: typeof data?.last_name === "string" ? data.last_name : null,
+    });
   } catch (error) {
     console.error("Staff invite validation route failed.", error);
 
