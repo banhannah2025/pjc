@@ -23,6 +23,7 @@ type SecurityMessage = {
 };
 
 type SenderProfile = {
+  id?: string | null;
   email?: string | null;
   name?: string | null;
 };
@@ -110,9 +111,12 @@ export async function GET(
       );
     }
 
-    return NextResponse.json({
-      messages: Array.isArray(data) ? data.map(normalizeSecurityMessage) : [],
-    });
+    const messages = await enrichMessagesWithSenderProfiles(
+      supabaseAdmin,
+      Array.isArray(data) ? data : []
+    );
+
+    return NextResponse.json({ messages });
   } catch (error) {
     console.error("OUGM security message load route failed.", error);
 
@@ -243,57 +247,96 @@ async function loadMessagesForRoom(
   supabaseAdmin: ReturnType<typeof createSupabaseAdminClient>,
   roomId: string
 ) {
-  const richSelect = "*, profiles:sender_id(email, name)";
-  const emailOnlySelect = "*, profiles:sender_id(email)";
-  const baseQuery = () =>
-    supabaseAdmin
-      .from("security_messages")
-      .select(richSelect)
-      .eq("room_id", roomId)
-      .order("created_at", { ascending: true });
-
-  const richResult = await baseQuery();
-
-  if (!richResult.error) {
-    return richResult;
-  }
-
-  if (
-    !isMissingColumnError(richResult.error.message) &&
-    !isRelationshipError(richResult.error.message)
-  ) {
-    return richResult;
-  }
-
-  console.warn(
-    "Retrying OUGM security message load with profile fallback.",
-    richResult.error.message
-  );
-
-  const emailOnlyResult = await supabaseAdmin
-    .from("security_messages")
-    .select(emailOnlySelect)
-    .eq("room_id", roomId)
-    .order("created_at", { ascending: true });
-
-  if (!emailOnlyResult.error) {
-    return emailOnlyResult;
-  }
-
-  if (!isRelationshipError(emailOnlyResult.error.message)) {
-    return emailOnlyResult;
-  }
-
-  console.warn(
-    "Retrying OUGM security message load without profile relationship.",
-    emailOnlyResult.error.message
-  );
-
   return supabaseAdmin
     .from("security_messages")
     .select("*")
     .eq("room_id", roomId)
     .order("created_at", { ascending: true });
+}
+
+async function enrichMessagesWithSenderProfiles(
+  supabaseAdmin: ReturnType<typeof createSupabaseAdminClient>,
+  rows: unknown[]
+) {
+  const normalizedMessages = rows.map(normalizeSecurityMessage);
+  const senderIds = Array.from(
+    new Set(
+      normalizedMessages
+        .map((message) => message.sender_id)
+        .filter((senderId): senderId is string => Boolean(senderId))
+    )
+  );
+
+  if (senderIds.length === 0) {
+    return normalizedMessages;
+  }
+
+  const profileMap = await loadSenderProfiles(supabaseAdmin, senderIds);
+
+  return normalizedMessages.map((message) => {
+    const profile = message.sender_id
+      ? profileMap.get(message.sender_id) ?? null
+      : null;
+
+    return {
+      ...message,
+      profiles: profile,
+      sender_name:
+        profile?.email ?? profile?.name ?? message.sender_name ?? null,
+    };
+  });
+}
+
+async function loadSenderProfiles(
+  supabaseAdmin: ReturnType<typeof createSupabaseAdminClient>,
+  senderIds: string[]
+) {
+  const profileMap = new Map<string, SenderProfile>();
+  const richProfiles = await supabaseAdmin
+    .from("profiles")
+    .select("id, email, name")
+    .in("id", senderIds);
+
+  if (!richProfiles.error) {
+    for (const profile of Array.isArray(richProfiles.data)
+      ? richProfiles.data
+      : []) {
+      const normalizedProfile = normalizeSenderProfile(profile);
+
+      if (normalizedProfile?.id) {
+        profileMap.set(normalizedProfile.id, normalizedProfile);
+      }
+    }
+
+    return profileMap;
+  }
+
+  if (!isMissingColumnError(richProfiles.error.message)) {
+    console.error("Failed to load sender profile metadata.", richProfiles.error);
+    return profileMap;
+  }
+
+  const emailOnlyProfiles = await supabaseAdmin
+    .from("profiles")
+    .select("id, email")
+    .in("id", senderIds);
+
+  if (emailOnlyProfiles.error) {
+    console.error("Failed to load sender profile emails.", emailOnlyProfiles.error);
+    return profileMap;
+  }
+
+  for (const profile of Array.isArray(emailOnlyProfiles.data)
+    ? emailOnlyProfiles.data
+    : []) {
+    const normalizedProfile = normalizeSenderProfile(profile);
+
+    if (normalizedProfile?.id) {
+      profileMap.set(normalizedProfile.id, normalizedProfile);
+    }
+  }
+
+  return profileMap;
 }
 
 async function loadSenderProfile(
@@ -416,12 +459,13 @@ function normalizeSenderProfile(value: unknown): SenderProfile | null {
 
   const email = typeof value.email === "string" ? value.email : null;
   const name = typeof value.name === "string" ? value.name : null;
+  const id = typeof value.id === "string" ? value.id : null;
 
   if (!email && !name) {
     return null;
   }
 
-  return { email, name };
+  return { id, email, name };
 }
 
 function readFirstString(record: Record<string, unknown>, keys: string[]) {
@@ -441,15 +485,6 @@ function isMissingColumnError(message: string | undefined) {
     typeof message === "string" &&
     message.includes("Could not find the") &&
     message.includes("column")
-  );
-}
-
-function isRelationshipError(message: string | undefined) {
-  return (
-    typeof message === "string" &&
-    (message.includes("relationship") ||
-      message.includes("foreign key") ||
-      message.includes("Could not find a relationship"))
   );
 }
 

@@ -171,6 +171,7 @@ export function SecurityChatWindow({
 
             return [...currentMessages, nextMessage];
           });
+          void loadRoomMessages();
         }
       )
       .subscribe((status, subscribeError) => {
