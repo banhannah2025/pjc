@@ -111,10 +111,12 @@ export async function GET(
       );
     }
 
-    const messages = await enrichMessagesWithSenderProfiles(
+    const messages = await enrichMessagesWithSenderProfiles({
       supabaseAdmin,
-      Array.isArray(data) ? data : []
-    );
+      rows: Array.isArray(data) ? data : [],
+      currentUserEmail: user.email ?? null,
+      currentUserId: user.id,
+    });
 
     return NextResponse.json({ messages });
   } catch (error) {
@@ -254,10 +256,17 @@ async function loadMessagesForRoom(
     .order("created_at", { ascending: true });
 }
 
-async function enrichMessagesWithSenderProfiles(
-  supabaseAdmin: ReturnType<typeof createSupabaseAdminClient>,
-  rows: unknown[]
-) {
+async function enrichMessagesWithSenderProfiles({
+  supabaseAdmin,
+  rows,
+  currentUserEmail,
+  currentUserId,
+}: {
+  supabaseAdmin: ReturnType<typeof createSupabaseAdminClient>;
+  rows: unknown[];
+  currentUserEmail: string | null;
+  currentUserId: string;
+}) {
   const normalizedMessages = rows.map(normalizeSecurityMessage);
   const senderIds = Array.from(
     new Set(
@@ -272,10 +281,25 @@ async function enrichMessagesWithSenderProfiles(
   }
 
   const profileMap = await loadSenderProfiles(supabaseAdmin, senderIds);
+  const missingSenderIds = senderIds.filter((senderId) => !profileMap.has(senderId));
+  const authProfileMap = await loadAuthSenderProfiles(
+    supabaseAdmin,
+    missingSenderIds
+  );
 
   return normalizedMessages.map((message) => {
+    const sessionProfile =
+      message.sender_id === currentUserId && currentUserEmail
+        ? {
+            id: currentUserId,
+            email: currentUserEmail,
+            name: null,
+          }
+        : null;
     const profile = message.sender_id
-      ? profileMap.get(message.sender_id) ?? null
+      ? profileMap.get(message.sender_id) ??
+        authProfileMap.get(message.sender_id) ??
+        sessionProfile
       : null;
 
     return {
@@ -339,6 +363,46 @@ async function loadSenderProfiles(
   return profileMap;
 }
 
+async function loadAuthSenderProfiles(
+  supabaseAdmin: ReturnType<typeof createSupabaseAdminClient>,
+  senderIds: string[]
+) {
+  const profileMap = new Map<string, SenderProfile>();
+
+  await Promise.all(
+    senderIds.map(async (senderId) => {
+      try {
+        const { data, error } = await supabaseAdmin.auth.admin.getUserById(
+          senderId
+        );
+
+        if (error) {
+          console.warn("Failed to resolve sender email from Supabase Auth.", {
+            senderId,
+            error: error.message,
+          });
+          return;
+        }
+
+        if (data.user?.email) {
+          profileMap.set(senderId, {
+            id: senderId,
+            email: data.user.email,
+            name: null,
+          });
+        }
+      } catch (error) {
+        console.warn("Sender auth lookup failed.", {
+          senderId,
+          error: getErrorMessage(error),
+        });
+      }
+    })
+  );
+
+  return profileMap;
+}
+
 async function loadSenderProfile(
   supabaseAdmin: ReturnType<typeof createSupabaseAdminClient>,
   senderId: string
@@ -350,12 +414,20 @@ async function loadSenderProfile(
     .maybeSingle();
 
   if (!richProfile.error) {
-    return normalizeSenderProfile(richProfile.data);
+    const profile = normalizeSenderProfile(richProfile.data);
+
+    if (profile?.email || profile?.name) {
+      return profile;
+    }
+
+    const authProfiles = await loadAuthSenderProfiles(supabaseAdmin, [senderId]);
+    return authProfiles.get(senderId) ?? null;
   }
 
   if (!isMissingColumnError(richProfile.error.message)) {
     console.error("Failed to load sender profile metadata.", richProfile.error);
-    return null;
+    const authProfiles = await loadAuthSenderProfiles(supabaseAdmin, [senderId]);
+    return authProfiles.get(senderId) ?? null;
   }
 
   const emailOnlyProfile = await supabaseAdmin
@@ -366,10 +438,18 @@ async function loadSenderProfile(
 
   if (emailOnlyProfile.error) {
     console.error("Failed to load sender profile email.", emailOnlyProfile.error);
-    return null;
+    const authProfiles = await loadAuthSenderProfiles(supabaseAdmin, [senderId]);
+    return authProfiles.get(senderId) ?? null;
   }
 
-  return normalizeSenderProfile(emailOnlyProfile.data);
+  const profile = normalizeSenderProfile(emailOnlyProfile.data);
+
+  if (profile?.email || profile?.name) {
+    return profile;
+  }
+
+  const authProfiles = await loadAuthSenderProfiles(supabaseAdmin, [senderId]);
+  return authProfiles.get(senderId) ?? null;
 }
 
 async function insertSecurityMessage({

@@ -509,8 +509,16 @@ function renderSenderName(message: SecurityMessage) {
     message.profiles?.email ??
     message.profiles?.name ??
     message.sender_name ??
-    "Security Operator"
+    formatSenderId(message.sender_id)
   );
+}
+
+function formatSenderId(senderId: string | null | undefined) {
+  if (!senderId) {
+    return "Unknown Sender";
+  }
+
+  return `Sender ${senderId.slice(0, 8)}`;
 }
 
 function readFirstString(record: Record<string, unknown>, keys: string[]) {
