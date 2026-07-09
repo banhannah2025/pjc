@@ -321,7 +321,7 @@ async function loadSenderProfiles(
   const profileMap = new Map<string, SenderProfile>();
   const richProfiles = await supabaseAdmin
     .from("profiles")
-    .select("id, email, first_name, last_name, name")
+    .select("id, email, first_name, last_name")
     .in("id", senderIds);
 
   if (!richProfiles.error) {
@@ -335,6 +335,7 @@ async function loadSenderProfiles(
       }
     }
 
+    await enrichProfileMapWithInviteNames(supabaseAdmin, profileMap);
     return profileMap;
   }
 
@@ -363,7 +364,70 @@ async function loadSenderProfiles(
     }
   }
 
+  await enrichProfileMapWithInviteNames(supabaseAdmin, profileMap);
   return profileMap;
+}
+
+async function enrichProfileMapWithInviteNames(
+  supabaseAdmin: ReturnType<typeof createSupabaseAdminClient>,
+  profileMap: Map<string, SenderProfile>
+) {
+  const emailsNeedingNames = Array.from(profileMap.values())
+    .filter(
+      (profile) => profile.email && !(profile.first_name && profile.last_name)
+    )
+    .map((profile) => profile.email as string);
+
+  if (emailsNeedingNames.length === 0) {
+    return;
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from("allowed_invites")
+    .select("email, first_name, last_name")
+    .in("email", emailsNeedingNames);
+
+  if (error) {
+    console.warn("Failed to load invite names for sender profiles.", {
+      error: error.message,
+    });
+    return;
+  }
+
+  const inviteNameMap = new Map<
+    string,
+    Pick<SenderProfile, "first_name" | "last_name">
+  >();
+
+  for (const invite of Array.isArray(data) ? data : []) {
+    const email = typeof invite.email === "string" ? invite.email : null;
+    const firstName =
+      typeof invite.first_name === "string" ? invite.first_name : null;
+    const lastName =
+      typeof invite.last_name === "string" ? invite.last_name : null;
+
+    if (email && firstName && lastName) {
+      inviteNameMap.set(email, {
+        first_name: firstName,
+        last_name: lastName,
+      });
+    }
+  }
+
+  for (const [senderId, profile] of profileMap) {
+    if (!profile.email || (profile.first_name && profile.last_name)) {
+      continue;
+    }
+
+    const inviteNames = inviteNameMap.get(profile.email);
+
+    if (inviteNames) {
+      profileMap.set(senderId, {
+        ...profile,
+        ...inviteNames,
+      });
+    }
+  }
 }
 
 async function loadAuthSenderProfiles(
@@ -414,12 +478,15 @@ async function loadSenderProfile(
 ): Promise<SenderProfile | null> {
   const richProfile = await supabaseAdmin
     .from("profiles")
-    .select("email, first_name, last_name, name")
+    .select("email, first_name, last_name")
     .eq("id", senderId)
     .maybeSingle();
 
   if (!richProfile.error) {
-    const profile = normalizeSenderProfile(richProfile.data);
+    const profile = await enrichProfileWithInviteName(
+      supabaseAdmin,
+      normalizeSenderProfile(richProfile.data)
+    );
 
     if (hasSenderDisplayValue(profile)) {
       return profile;
@@ -447,7 +514,10 @@ async function loadSenderProfile(
     return authProfiles.get(senderId) ?? null;
   }
 
-  const profile = normalizeSenderProfile(emailOnlyProfile.data);
+  const profile = await enrichProfileWithInviteName(
+    supabaseAdmin,
+    normalizeSenderProfile(emailOnlyProfile.data)
+  );
 
   if (hasSenderDisplayValue(profile)) {
     return profile;
@@ -455,6 +525,42 @@ async function loadSenderProfile(
 
   const authProfiles = await loadAuthSenderProfiles(supabaseAdmin, [senderId]);
   return authProfiles.get(senderId) ?? null;
+}
+
+async function enrichProfileWithInviteName(
+  supabaseAdmin: ReturnType<typeof createSupabaseAdminClient>,
+  profile: SenderProfile | null
+) {
+  if (!profile?.email || (profile.first_name && profile.last_name)) {
+    return profile;
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from("allowed_invites")
+    .select("first_name, last_name")
+    .eq("email", profile.email)
+    .maybeSingle();
+
+  if (error) {
+    console.warn("Failed to load invite name for sender profile.", {
+      email: profile.email,
+      error: error.message,
+    });
+    return profile;
+  }
+
+  const firstName = typeof data?.first_name === "string" ? data.first_name : null;
+  const lastName = typeof data?.last_name === "string" ? data.last_name : null;
+
+  if (!firstName || !lastName) {
+    return profile;
+  }
+
+  return {
+    ...profile,
+    first_name: firstName,
+    last_name: lastName,
+  };
 }
 
 async function insertSecurityMessage({
